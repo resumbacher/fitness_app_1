@@ -53,7 +53,13 @@ class ExercisePage extends StatefulWidget {
 
 class _ExercisePageState extends State<ExercisePage> {
   int secondsRemaining = 60;
+  int currentImageIndex = 1;
   Timer? timer;
+
+  final Map<int, String> exerciseNames = {
+    1: 'Liegestütz',
+    2: 'Übung 2', // Text für 2.jpg
+  };
 
   @override
   void initState() {
@@ -68,8 +74,15 @@ class _ExercisePageState extends State<ExercisePage> {
           secondsRemaining--;
         });
       } else {
-        timer.cancel();
-        Navigator.pop(context); // zurück zur Startseite
+        if (currentImageIndex < 2) {
+          setState(() {
+            currentImageIndex++;
+            secondsRemaining = 60;
+          });
+        } else {
+          timer.cancel();
+          Navigator.pop(context);
+        }
       }
     });
   }
@@ -88,17 +101,16 @@ class _ExercisePageState extends State<ExercisePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Aktuelles Bild (vorerst nur Bild 1)
             Image.asset(
-              'assets/images/1.jpg', // Stelle sicher, dass diese Datei vorhanden ist
+              'assets/images/$currentImageIndex.jpg',
               width: 300,
               height: 300,
               fit: BoxFit.cover,
             ),
             const SizedBox(height: 20),
-            const Text(
-              'Liegestütz',
-              style: TextStyle(fontSize: 28, color: Colors.white),
+            Text(
+              exerciseNames[currentImageIndex] ?? 'Übung',
+              style: const TextStyle(fontSize: 28, color: Colors.white),
             ),
             const SizedBox(height: 10),
             Text(
