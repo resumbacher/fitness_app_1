@@ -55,10 +55,14 @@ class _ExercisePageState extends State<ExercisePage> {
   int secondsRemaining = 60;
   int currentImageIndex = 1;
   Timer? timer;
+  bool isPaused = false;
+
+  final int maxImages = 2;
 
   final Map<int, String> exerciseNames = {
     1: 'Liegestütz',
-    2: 'Übung 2', // Text für 2.jpg
+    2: 'Übung 2',
+    3: 'Übung 3',
   };
 
   @override
@@ -69,22 +73,48 @@ class _ExercisePageState extends State<ExercisePage> {
 
   void startTimer() {
     timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (secondsRemaining > 0) {
-        setState(() {
-          secondsRemaining--;
-        });
-      } else {
-        if (currentImageIndex < 2) {
+      if (!isPaused) {
+        if (secondsRemaining > 0) {
           setState(() {
-            currentImageIndex++;
-            secondsRemaining = 60;
+            secondsRemaining--;
           });
         } else {
-          timer.cancel();
-          Navigator.pop(context);
+          if (currentImageIndex < maxImages) {
+            setState(() {
+              currentImageIndex++;
+              secondsRemaining = 60;
+            });
+          } else {
+            timer.cancel();
+            Navigator.pop(context);
+          }
         }
       }
     });
+  }
+
+  void pauseOrResume() {
+    setState(() {
+      isPaused = !isPaused;
+    });
+  }
+
+  void goToPrevious() {
+    if (currentImageIndex > 1) {
+      setState(() {
+        currentImageIndex--;
+        secondsRemaining = 60;
+      });
+    }
+  }
+
+  void goToNext() {
+    if (currentImageIndex < maxImages) {
+      setState(() {
+        currentImageIndex++;
+        secondsRemaining = 60;
+      });
+    }
   }
 
   @override
@@ -117,6 +147,32 @@ class _ExercisePageState extends State<ExercisePage> {
               '$secondsRemaining Sekunden',
               style: const TextStyle(fontSize: 24, color: Colors.orange),
             ),
+            const SizedBox(height: 30),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  onPressed: goToPrevious,
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  iconSize: 40,
+                ),
+                const SizedBox(width: 30),
+                IconButton(
+                  onPressed: pauseOrResume,
+                  icon: Icon(
+                    isPaused ? Icons.play_arrow : Icons.pause,
+                    color: Colors.white,
+                  ),
+                  iconSize: 40,
+                ),
+                const SizedBox(width: 30),
+                IconButton(
+                  onPressed: goToNext,
+                  icon: const Icon(Icons.arrow_forward, color: Colors.white),
+                  iconSize: 40,
+                ),
+              ],
+            )
           ],
         ),
       ),
