@@ -57,12 +57,14 @@ class _ExercisePageState extends State<ExercisePage> {
   Timer? timer;
   bool isPaused = false;
 
-  final int maxImages = 2;
+  final int maxImages = 5;
 
   final Map<int, String> exerciseNames = {
     1: 'Liegestütz',
     2: 'Übung 2',
     3: 'Übung 3',
+    4: 'Übung 4',
+    5: 'Übung 5',
   };
 
   @override
