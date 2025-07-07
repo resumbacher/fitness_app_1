@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
 void main() {
   runApp(const WorkoutApp());
@@ -75,6 +77,7 @@ class ConfigPage extends StatefulWidget {
 class _ConfigPageState extends State<ConfigPage> {
   final TextEditingController secondsController = TextEditingController(text: '60');
   final TextEditingController exercisesController = TextEditingController(text: '7');
+  final TextEditingController pauseController = TextEditingController(text: '5');
 
   @override
   Widget build(BuildContext context) {
@@ -83,7 +86,7 @@ class _ConfigPageState extends State<ConfigPage> {
         title: const Text('Zurück zum Menü'),
         backgroundColor: Colors.black,
         leading: IconButton(
-          icon: const Icon(Icons.home),
+          icon: const Icon(Icons.home, color: Colors.white),
           onPressed: () {
             Navigator.pushAndRemoveUntil(
               context,
@@ -118,11 +121,26 @@ class _ConfigPageState extends State<ConfigPage> {
                 labelStyle: TextStyle(color: Colors.white),
               ),
             ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: pauseController,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'Wartezeit zwischen Übungen (Sekunden)',
+                labelStyle: TextStyle(color: Colors.white),
+              ),
+            ),
             const SizedBox(height: 40),
             ElevatedButton(
               onPressed: () {
                 int seconds = int.tryParse(secondsController.text) ?? 60;
                 int count = int.tryParse(exercisesController.text) ?? 7;
+                int pause = int.tryParse(pauseController.text) ?? 5;
+
+                int maxExercises = widget.mode == 'workout' ? 34 : 12;
+                if (count > maxExercises) count = maxExercises;
+
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -130,6 +148,7 @@ class _ConfigPageState extends State<ConfigPage> {
                       durationPerExercise: seconds,
                       numberOfExercises: count,
                       mode: widget.mode,
+                      pauseBetweenExercises: pause,
                     ),
                   ),
                 );
@@ -146,6 +165,7 @@ class _ConfigPageState extends State<ConfigPage> {
 class ExercisePage extends StatefulWidget {
   final int durationPerExercise;
   final int numberOfExercises;
+  final int pauseBetweenExercises;
   final String mode;
 
   const ExercisePage({
@@ -153,6 +173,7 @@ class ExercisePage extends StatefulWidget {
     required this.durationPerExercise,
     required this.numberOfExercises,
     required this.mode,
+    required this.pauseBetweenExercises,
   });
 
   @override
@@ -161,41 +182,64 @@ class ExercisePage extends StatefulWidget {
 
 class _ExercisePageState extends State<ExercisePage> {
   late int secondsRemaining;
-  int currentImageIndex = 1;
+  int currentExerciseIndex = 0;
   Timer? timer;
   bool isPaused = false;
+  bool inPause = false;
   final player = AudioPlayer();
+  final flutterTts = FlutterTts();
+  List<int> selectedExercises = [];
 
   final Map<int, String> workoutNames = {
-    1: 'Liegestütz',
-    2: 'Planken',
-    3: 'Lunge&Kick',
-    4: 'Diamond Push-up',
-    5: 'Bicycle crunch',
-    6: 'Übung 6',
-    7: 'Übung 7',
+    1: 'Liegestütz', 2: 'Planken', 3: 'Lunge&Kick', 4: 'Diamond Push-up',
+    5: 'Bicycle crunch', 6: 'drop&touch', 7: 'one leg push up',
+    8: '1-2 box and kick', 9: 'windscreen wiper', 10: 'reverse crunch & hug',
+    11: 'push up & rotation', 12: 'squat thrusts', 13: 'skater',
+    14: 'mountain climbers', 15: 'jumping jacks', 16: 'side plank crunch',
+    17: 'power squat', 18: 'one leg wall sit', 19: 'triceps dip',
+    20: 'v sit twist', 21: 'advanced bird dog', 22: 'bird dog',
+    23: 'mountain climbers', 24: 'long jumps', 25: 'downward dog grasshopper',
+    26: 'hindu push up', 27: 'superman', 28: 'full side plank',
+    29: 'side to side hop', 30: 'chair split squat', 31: 'lunge',
+    32: 'reverse plank', 33: 'abdominal crunch', 34: 'high knees',
   };
 
   final Map<int, String> dumbbellNames = {
-    1: 'Goblet Squat',
-    2: 'Scaption',
-    3: 'Arnold Press',
-    4: 'Bent Over Lateral Raise',
-    5: 'Bent Over Row',
-    6: 'Side Lunge',
-    7: 'Lying Triceps Press',
-    8: 'Seated Biceps Curl Alt.',
-    9: '3D Shoulder Press',
-    10: 'Bench Press',
-    11: 'Corkscrew',
+    1: 'Goblet Squat', 2: 'Scaption', 3: 'Arnold Press',
+    4: 'Bent Over Lateral Raise', 5: 'Bent Over Row', 6: 'Side Lunge',
+    7: 'Lying Triceps Press', 8: 'Seated Biceps Curl Alt.',
+    9: '3D Shoulder Press', 10: 'Bench Press', 11: 'Corkscrew',
     12: 'Crunch',
   };
 
   @override
   void initState() {
     super.initState();
+    initWorkout();
+  }
+
+  Future<void> initWorkout() async {
+    await flutterTts.speak("Willkommen zur Fitness App");
+    await Future.delayed(const Duration(seconds: 2));
+    final max = widget.mode == 'workout' ? 34 : 12;
+    selectedExercises = List.generate(max, (i) => i + 1)..shuffle();
+    selectedExercises = selectedExercises.take(widget.numberOfExercises).toList();
     secondsRemaining = widget.durationPerExercise;
     startTimer();
+    await announceNextExercise();
+  }
+
+  Future<void> announceNextExercise() async {
+    final nameMap = widget.mode == 'workout' ? workoutNames : dumbbellNames;
+    final currentExercise = selectedExercises[currentExerciseIndex];
+    final name = nameMap[currentExercise] ?? "Übung";
+    await flutterTts.speak(name);
+    await Future.delayed(const Duration(seconds: 1));
+    await flutterTts.speak("3");
+    await Future.delayed(const Duration(seconds: 1));
+    await flutterTts.speak("2");
+    await Future.delayed(const Duration(seconds: 1));
+    await flutterTts.speak("1");
   }
 
   void startTimer() {
@@ -207,18 +251,29 @@ class _ExercisePageState extends State<ExercisePage> {
           });
         } else {
           await player.play(AssetSource('sounds/success.mp3'));
-          if (currentImageIndex < widget.numberOfExercises) {
-            setState(() {
-              currentImageIndex++;
-              secondsRemaining = widget.durationPerExercise;
-            });
+          if (inPause) {
+            if (currentExerciseIndex < widget.numberOfExercises - 1) {
+              setState(() {
+                currentExerciseIndex++;
+                inPause = false;
+                secondsRemaining = widget.durationPerExercise;
+              });
+              await announceNextExercise();
+            } else {
+              timer.cancel();
+              await flutterTts.speak("Fertig, alles geschafft!");
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const SelectionPage()),
+                (route) => false,
+              );
+            }
           } else {
-            timer.cancel();
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (context) => const SelectionPage()),
-              (route) => false,
-            );
+            setState(() {
+              inPause = true;
+              secondsRemaining = widget.pauseBetweenExercises;
+            });
+            await flutterTts.speak("Rest");
           }
         }
       }
@@ -231,24 +286,6 @@ class _ExercisePageState extends State<ExercisePage> {
     });
   }
 
-  void goToPrevious() {
-    if (currentImageIndex > 1) {
-      setState(() {
-        currentImageIndex--;
-        secondsRemaining = widget.durationPerExercise;
-      });
-    }
-  }
-
-  void goToNext() {
-    if (currentImageIndex < widget.numberOfExercises) {
-      setState(() {
-        currentImageIndex++;
-        secondsRemaining = widget.durationPerExercise;
-      });
-    }
-  }
-
   @override
   void dispose() {
     timer?.cancel();
@@ -259,13 +296,17 @@ class _ExercisePageState extends State<ExercisePage> {
   @override
   Widget build(BuildContext context) {
     final nameMap = widget.mode == 'workout' ? workoutNames : dumbbellNames;
+    final currentExercise = selectedExercises[currentExerciseIndex];
+    final total = widget.numberOfExercises;
+    final done = currentExerciseIndex + (inPause ? 1 : 0);
+    final remaining = total - done;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Zurück zum Menü'),
         backgroundColor: Colors.black,
         leading: IconButton(
-          icon: const Icon(Icons.home),
+          icon: const Icon(Icons.home, color: Colors.white),
           onPressed: () {
             timer?.cancel();
             Navigator.pushAndRemoveUntil(
@@ -281,15 +322,16 @@ class _ExercisePageState extends State<ExercisePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Image.asset(
-              'assets/images/${currentImageIndex}.jpg',
-              width: 300,
-              height: 300,
-              fit: BoxFit.cover,
-            ),
+            if (!inPause)
+              Image.asset(
+                'assets/images/$currentExercise.jpg',
+                width: 300,
+                height: 300,
+                fit: BoxFit.cover,
+              ),
             const SizedBox(height: 20),
             Text(
-              nameMap[currentImageIndex] ?? 'Übung',
+              inPause ? 'Pause' : nameMap[currentExercise] ?? 'Übung',
               style: const TextStyle(fontSize: 28, color: Colors.white),
             ),
             const SizedBox(height: 10),
@@ -297,37 +339,33 @@ class _ExercisePageState extends State<ExercisePage> {
               '$secondsRemaining Sekunden',
               style: const TextStyle(fontSize: 24, color: Colors.orange),
             ),
+            const SizedBox(height: 10),
+            Text(
+              'Übung ${done + 1} von $total (${remaining} verbleibend)',
+              style: const TextStyle(fontSize: 18, color: Colors.white70),
+            ),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40.0),
+              child: LinearProgressIndicator(
+                value: done / total,
+                backgroundColor: Colors.white24,
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
+                minHeight: 10,
+              ),
+            ),
             const SizedBox(height: 30),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  onPressed: goToPrevious,
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  iconSize: 40,
-                ),
-                const SizedBox(width: 30),
-                IconButton(
-                  onPressed: pauseOrResume,
-                  icon: Icon(
-                    isPaused ? Icons.play_arrow : Icons.pause,
-                    color: Colors.white,
-                  ),
-                  iconSize: 40,
-                ),
-                const SizedBox(width: 30),
-                IconButton(
-                  onPressed: goToNext,
-                  icon: const Icon(Icons.arrow_forward, color: Colors.white),
-                  iconSize: 40,
-                ),
-              ],
-            )
+            IconButton(
+              onPressed: pauseOrResume,
+              icon: Icon(
+                isPaused ? Icons.play_arrow : Icons.pause,
+                color: Colors.white,
+              ),
+              iconSize: 40,
+            ),
           ],
         ),
       ),
     );
   }
 }
-
-
