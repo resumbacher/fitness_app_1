@@ -27,40 +27,44 @@ class SelectionPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Menü'),
-        backgroundColor: Colors.black,
-      ),
-      backgroundColor: Colors.black,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const ConfigPage(mode: 'workout'),
-                  ),
-                );
-              },
-              child: const Text('Workout'),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            'assets/images/start_bild.jpg',
+            fit: BoxFit.cover,
+          ),
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ConfigPage(mode: 'workout'),
+                      ),
+                    );
+                  },
+                  child: const Text('Workout'),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ConfigPage(mode: 'hantel'),
+                      ),
+                    );
+                  },
+                  child: const Text('Hantel'),
+                ),
+              ],
             ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const ConfigPage(mode: 'hantel'),
-                  ),
-                );
-              },
-              child: const Text('Hantel'),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -156,6 +160,7 @@ class _ConfigPageState extends State<ConfigPage> {
                           (route) => false,
                         );
                       },
+                      //enableHalfTime: true,
                     ),
                   ),
                 );
@@ -221,7 +226,6 @@ final Map<int, String> dumbbellNames = {
   12: 'Crunch',
 };
 
-
 class ExercisePage extends StatefulWidget {
   final int durationPerExercise;
   final int numberOfExercises;
@@ -243,86 +247,115 @@ class ExercisePage extends StatefulWidget {
 }
 
 class _ExercisePageState extends State<ExercisePage> {
-  late List<int> exerciseIndices;
   int currentExercise = 0;
-  int remainingSeconds = 0;
+  int remainingTime = 0;
   bool isPaused = false;
-  late Timer timer;
-  final FlutterTts tts = FlutterTts();
+  Timer? timer;
+  List<String> exercises = [];
+  FlutterTts flutterTts = FlutterTts();
 
   @override
   void initState() {
     super.initState();
-    exerciseIndices = _generateRandomExercises();
-    _startExercise();
-  }
-
-  List<int> _generateRandomExercises() {
-    final random = Random();
-    final indices = <int>{};
-    int max = widget.mode == 'workout' ? workoutNames.length : dumbbellNames.length;
-
-    while (indices.length < widget.numberOfExercises) {
-      indices.add(random.nextInt(max) + 1);
-    }
-    return indices.toList();
-  }
-
-  void _startExercise() async {
-    setState(() {
-      isPaused = false;
-      remainingSeconds = widget.durationPerExercise;
-    });
-
-    String name = _getCurrentExerciseName();
-    await tts.setLanguage("en-US");
-    tts.speak(name);
-
-    timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      setState(() {
-        remainingSeconds--;
-      });
-
-      if (remainingSeconds == 0) {
-        timer.cancel();
-
-        if (currentExercise + 1 < exerciseIndices.length) {
-          setState(() {
-            currentExercise++;
-          });
-
-          Future.delayed(Duration(seconds: widget.pauseBetweenExercises), () {
-            _startExercise();
-          });
-        } else {
-          widget.onFinished();
-        }
-      }
-    });
-  }
-
-  String _getCurrentExerciseName() {
-    int id = exerciseIndices[currentExercise];
-    return widget.mode == 'workout' ? workoutNames[id]! : dumbbellNames[id]!;
-  }
-
-  String _getCurrentImagePath() {
-    int id = exerciseIndices[currentExercise];
-    String prefix = widget.mode == 'workout' ? '' : 'h';
-    return 'assets/images/$prefix$id.jpg';
+    generateExercises();
+    startExercise();
   }
 
   @override
   void dispose() {
-    timer.cancel();
-    tts.stop();
+    timer?.cancel();
+    flutterTts.stop();
     super.dispose();
+  }
+
+  void generateExercises() {
+    final source = widget.mode == 'workout' ? workoutNames : dumbbellNames;
+    final random = Random();
+    final keys = source.keys.toList()..shuffle();
+    exercises = keys.take(widget.numberOfExercises).map((k) => source[k]!).toList();
+  }
+
+  void startExercise() {
+    setState(() {
+      isPaused = false;
+      remainingTime = widget.durationPerExercise;
+    });
+
+    speak(exercises[currentExercise]);
+
+    timer?.cancel();
+    timer = Timer.periodic(const Duration(seconds: 1), (Timer t) {
+      setState(() {
+        if (remainingTime == widget.durationPerExercise ~/ 2) {
+          speak("Half-time");
+        }
+
+        if (remainingTime > 0) {
+          remainingTime--;
+        } else {
+          t.cancel();
+          if (currentExercise < exercises.length - 1) {
+            setState(() {
+              isPaused = true;
+              remainingTime = widget.pauseBetweenExercises;
+            });
+
+            speak("Pause");
+
+            Timer.periodic(const Duration(seconds: 1), (pt) {
+              setState(() {
+                if (remainingTime > 0) {
+                  remainingTime--;
+                } else {
+                  pt.cancel();
+                  setState(() {
+                    currentExercise++;
+                  });
+                  startExercise();
+                }
+              });
+            });
+          } else {
+            widget.onFinished();
+          }
+        }
+      });
+    });
+  }
+
+  void speak(String text) async {
+    await flutterTts.setLanguage("en-US");
+    await flutterTts.setPitch(1);
+    await flutterTts.speak(text);
+  }
+
+  void goToPreviousExercise() {
+    if (currentExercise > 0) {
+      timer?.cancel();
+      setState(() {
+        currentExercise--;
+        startExercise();
+      });
+    }
+  }
+
+  void goToNextExercise() {
+    if (currentExercise < exercises.length - 1) {
+      timer?.cancel();
+      setState(() {
+        currentExercise++;
+        startExercise();
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    String name = _getCurrentExerciseName();
-    String imagePath = _getCurrentImagePath();
+    String imagePath = widget.mode == 'workout'
+        ? 'assets/images/${currentExercise + 1}.jpg'
+        : 'assets/images/h${currentExercise + 1}.jpg';
+
+    double progress = remainingTime / widget.durationPerExercise;
 
     return Scaffold(
       appBar: AppBar(
@@ -330,7 +363,7 @@ class _ExercisePageState extends State<ExercisePage> {
         leading: IconButton(
           icon: const Icon(Icons.home, color: Colors.white),
           onPressed: () {
-            timer.cancel();
+            timer?.cancel();
             Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(builder: (context) => const SelectionPage()),
@@ -338,32 +371,63 @@ class _ExercisePageState extends State<ExercisePage> {
             );
           },
         ),
-        title: const Text('Übung', style: TextStyle(color: Colors.white)),
+        title: Text('Übung ${currentExercise + 1} / ${exercises.length}'),
       ),
       backgroundColor: Colors.black,
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Text(
-              name,
-              style: const TextStyle(color: Colors.white, fontSize: 24),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: Image.asset(
-                imagePath,
-                fit: BoxFit.contain,
+      body: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          if (!isPaused)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text(
+                exercises[currentExercise],
+                style: const TextStyle(color: Colors.white, fontSize: 28),
+                textAlign: TextAlign.center,
               ),
             ),
-            const SizedBox(height: 20),
-            Text(
-              'Noch $remainingSeconds Sekunden',
-              style: const TextStyle(color: Colors.white, fontSize: 20),
+          if (isPaused && currentExercise + 1 < exercises.length)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text(
+                'Pause...\nNächste Übung: ${exercises[currentExercise + 1]}',
+                style: const TextStyle(color: Colors.white, fontSize: 24),
+                textAlign: TextAlign.center,
+              ),
             ),
-          ],
-        ),
+          Image.asset(
+            imagePath,
+            height: 250,
+            errorBuilder: (context, error, stackTrace) {
+              return const Text("Bild nicht gefunden", style: TextStyle(color: Colors.grey));
+            },
+          ),
+          Text(
+            '${remainingTime}s',
+            style: const TextStyle(fontSize: 50, color: Colors.white),
+          ),
+          LinearProgressIndicator(
+            value: isPaused ? 1.0 : progress,
+            backgroundColor: Colors.grey,
+            valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
+            minHeight: 10,
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              if (currentExercise > 0)
+                ElevatedButton(
+                  onPressed: goToPreviousExercise,
+                  child: const Text("Zurück"),
+                ),
+              if (currentExercise < exercises.length - 1)
+                ElevatedButton(
+                  onPressed: goToNextExercise,
+                  child: const Text("Weiter"),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
